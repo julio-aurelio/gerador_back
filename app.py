@@ -1,14 +1,30 @@
+# app_poetry.py - GERADOR DE POESIAS SIMPLES
+# Versão: 1.0 - SEM COMPLICAÇÕES
+
 import os
 import json
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from google import genai
 from google.genai import types
+from dotenv import load_dotenv
 
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    print("ERRO: GEMINI_API_KEY não encontrada")
+    exit(1)
+
+client = genai.Client(api_key=GEMINI_API_KEY)
 app = Flask(__name__)
 CORS(app)
 
-MODELO_PADRAO = "gemini-2.0-flash-lite"
+MODELO_PADRAO = "gemini-3.1-flash-lite"
+
+# ============================================
+# ESTILOS DE POESIA
+# ============================================
 
 ESTILOS_POESIA = {
     "moderna": {"nome": "Poesia Moderna", "icone": "🌆"},
@@ -23,25 +39,33 @@ ESTILOS_POESIA = {
     "satirica": {"nome": "Poesia Satírica", "icone": "🎭"}
 }
 
+# ============================================
+# FUNÇÃO PRINCIPAL
+# ============================================
+
 def gerar_poema(tema, estilo, versos):
+    # Ajusta versos
     versos = max(4, min(30, versos))
+    
     estilo_info = ESTILOS_POESIA.get(estilo, ESTILOS_POESIA["moderna"])
     
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    prompt = f"""
+    Crie um poema sobre "{tema}" no estilo {estilo_info['nome']} com {versos} versos.
     
-    prompt = f"""Crie um poema sobre "{tema}" no estilo {estilo_info['nome']} com {versos} versos.
-
-IMPORTANTE: 
-- Não use pornografia, não incentive suicídio, não use drogas, não use pedofilia, não use zoofilia, não use racismo.
-- Faça um poema bonito e inspirador.
-
-Responda APENAS com este JSON:
-{{
-    "titulo": "título do poema",
-    "conteudo": "verso 1\\nverso 2\\nverso 3\\n..."
-}}"""
+    IMPORTANTE: 
+    - Não use pornografia, não incentive suicídio, não use drogas, não use pedofilia, não use zoofilia, não use racismo.
+    - Faça um poema bonito e inspirador.
     
-    config = types.GenerateContentConfig(response_mime_type="application/json")
+    Responda APENAS com este JSON:
+    {{
+        "titulo": "título do poema",
+        "conteudo": "verso 1\\nverso 2\\nverso 3\\n..."
+    }}
+    """
+    
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+    )
     
     try:
         response = client.models.generate_content(
@@ -49,6 +73,7 @@ Responda APENAS com este JSON:
             contents=prompt,
             config=config,
         )
+        
         poema = json.loads(response.text)
         return {
             "status": "success",
@@ -58,30 +83,52 @@ Responda APENAS com este JSON:
             "icone": estilo_info["icone"],
             "tema": tema
         }
+        
     except Exception as e:
-        return {"status": "error", "mensagem": str(e)}
+        print(f"Erro: {e}")
+        return {
+            "status": "error",
+            "mensagem": str(e)
+        }
+
+# ============================================
+# ROTAS
+# ============================================
 
 @app.route("/", methods=["GET"])
 def root():
-    return jsonify({"app": "Gerador de Poesias", "versao": "1.0"})
+    return jsonify({
+        "app": "Gerador de Poesias",
+        "versao": "1.0"
+    })
 
 @app.route("/estilos", methods=["GET"])
 def listar_estilos():
-    estilos = [{"id": k, "nome": v["nome"], "icone": v["icone"]} for k, v in ESTILOS_POESIA.items()]
+    estilos = []
+    for key, value in ESTILOS_POESIA.items():
+        estilos.append({
+            "id": key,
+            "nome": value["nome"],
+            "icone": value["icone"]
+        })
     return jsonify({"estilos": estilos})
 
 @app.route("/gerar", methods=["POST"])
 def gerar():
     data = request.get_json()
+    
     tema = data.get("tema", "").strip()
     estilo = data.get("estilo", "moderna")
     versos = data.get("versos", 12)
     
     if not tema:
         return jsonify({"error": "Tema é obrigatório"}), 400
+    
     if estilo not in ESTILOS_POESIA:
         return jsonify({"error": f"Estilo {estilo} não existe"}), 400
     
-    return jsonify(gerar_poema(tema, estilo, versos))
+    resultado = gerar_poema(tema, estilo, versos)
+    return jsonify(resultado)
 
-handler = app
+if __name__ == "__main__":
+    app.run(debug=True)
